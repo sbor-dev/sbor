@@ -1,0 +1,12 @@
+[
+    {
+        "id": "<hash>",
+        "severity": "<severity>",
+        "description": "<description>"
+    },
+    {
+        "id": "<another_hash>",
+        "severity": "<another_severity>",
+        "description": "<another_description>"
+    }
+]
