@@ -22,7 +22,7 @@ if [ -n "$ROLE" ]; then
             target="$SRC_BASE/$name"
 
             rm -rf "$target"
-            cp -a "$item" "$target"
+            ln -s "$item" "$target"
             echo "[start.sh]   $item -> $target"
         done
     else
