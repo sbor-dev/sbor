@@ -31,6 +31,10 @@ RUN pip3 install --no-cache-dir --break-system-packages \
 
 RUN npm install -g --ignore-scripts @earendil-works/pi-coding-agent
 
+COPY ./scripts /scripts
+
+RUN chmod +x /scripts/*
+
 COPY ./agent /root/.pi/agent
 
-CMD ["/bin/bash"]
+CMD ["/scripts/start.sh"]
