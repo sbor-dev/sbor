@@ -1,0 +1,9 @@
+[submodule "validation/dataset/sources/swrbench"]
+	path = validation/dataset/sources/swrbench
+	url = https://github.com/ZZR0/SWRench.git
+[submodule "validation/dataset/sources/c_cpp_benchmark"]
+	path = validation/dataset/sources/c_cpp_benchmark
+	url = https://github.com/CloudAEye/c_cpp_benchmark.git
+[submodule "validation/dataset/sources/aacr_bench"]
+	path = validation/dataset/sources/aacr_bench
+	url = https://github.com/alibaba/aacr-bench.git
