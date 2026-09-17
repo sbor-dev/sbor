@@ -1,0 +1,12 @@
+dataset:
+  name: sbor-validation
+  version: 0.1.0
+sources:
+  c_cpp_benchmark:
+    source_dir: validation/dataset/sources/c_cpp_benchmark
+    functional_categories:
+      - logic_error
+      - code_signature
+      - edge_case_handling
+      - concurrency_safety
+      - error_handling
