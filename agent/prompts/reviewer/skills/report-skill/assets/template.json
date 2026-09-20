@@ -1,0 +1,16 @@
+[
+    {
+        "id": "str: <hash>",
+        "severity": "str: <severity>",
+        "description": "str: <description>",
+        "file": "str: <relative_path_to_file_from_repository_root>",
+        "line": "int: <line_number_that_contains_defect>"
+    },
+    {
+        "id": "str: <another_hash>",
+        "severity": "str: <another_severity>",
+        "description": "str: <another_description>",
+        "file": "str: <another_relative_path_to_file_from_repository_root>",
+        "line": "int: <another_line_number_that_contains_defect>"
+    }
+]
