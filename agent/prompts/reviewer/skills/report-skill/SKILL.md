@@ -18,6 +18,9 @@ See [the template](assets/template.json) for template.
 
 - Write down a detailed explanation of each found defect in the `report.json` file. But DO NOT include unnecessary code snippets or terminal outputs in the `report.json` file. Include them ONLY if they are necessary to understand the defect. If you include code snippets or terminal outputs, make sure they are cropped and relevant to the defect. 
 - This file will be used by other agents and tools to analyze the found defects, so it is important to keep it clean and structured.
+- `category` must be `Functional` or `Evolvability`.
+- `file` must be a path relative to the repository root.
+- `start_line` and `end_line` must refer to the reviewed repository state. Both must be positive integers, and `end_line` must not be less than `start_line`.
 
 ## Markdown report
 
