@@ -10,8 +10,10 @@ __pycache__/
 .coverage
 htmlcov/
 
+sbor-dataset/
 sbor-dataset/**/clonned_repo/
 sbor-dataset/**/cloned_repo/
+runs/
 
 validate/dataset/raw/
 validate/dataset/canonical/
