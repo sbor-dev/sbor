@@ -114,7 +114,15 @@ def main(
 
 def git_revision(directory: Path) -> str:
     result = subprocess.run(
-        ["git", "-C", str(directory), "rev-parse", "HEAD"],
+        [
+            "git",
+            "-c",
+            f"safe.directory={directory.resolve()}",
+            "-C",
+            str(directory),
+            "rev-parse",
+            "HEAD",
+        ],
         check=True,
         capture_output=True,
         text=True,
