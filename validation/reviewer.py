@@ -10,6 +10,7 @@ from validation.common import JsonObject, load_yaml_mapping, required_text
 from validation.downloader import PreparedReview
 
 PROMPT_PATH = Path("/home/sbor/.pi/agent/validation_prompt.txt")
+AGENT_DIR = Path("/home/sbor/.pi/agent")
 
 
 def load_llm_configuration(path: Path | None, read_stdin: bool) -> JsonObject:
@@ -35,9 +36,11 @@ def agent_user_ids() -> tuple[int, int]:
     return user_stat.st_uid, user_stat.st_gid
 
 
-def configure_pi(llm_configuration: JsonObject) -> str:
-    home = Path("/home/sbor")
-    agent_dir = home / ".pi" / "agent"
+def configure_pi(
+    llm_configuration: JsonObject,
+    agent_dir: Path = AGENT_DIR,
+) -> str:
+    agent_dir = Path(agent_dir)
     agent_dir.mkdir(parents=True, exist_ok=True)
     model = required_text(llm_configuration, "model")
     payload = {

@@ -51,7 +51,9 @@ RUN useradd --create-home sbor
 
 COPY --chown=sbor:sbor ./agent/prompts/reviewer /home/sbor/.pi/agent
 
-RUN chmod -R go-rwx /home/sbor/.pi/agent
+COPY --chown=sbor:sbor ./agent/prompts/judge /home/sbor/.pi/judge
+
+RUN chmod -R go-rwx /home/sbor/.pi
 
 # love government <3
 RUN git config --system http.version HTTP/1.1

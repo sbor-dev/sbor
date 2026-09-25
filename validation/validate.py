@@ -36,6 +36,7 @@ def read_llm_config(path: Path | None) -> str:
 
 def docker_command(
     reviewer_input_dir: Path,
+    judge_labels_dir: Path,
     output_dir: Path,
     validation_config: Path,
     image: str,
@@ -57,6 +58,8 @@ def docker_command(
             "--mount",
             f"type=bind,source={reviewer_input_dir.resolve()},target=/input,readonly",
             "--mount",
+            f"type=bind,source={judge_labels_dir.resolve()},target=/labels,readonly",
+            "--mount",
             "type=bind,source="
             f"{validation_config.resolve()},target=/run/sbor/validation.yaml,readonly",
             "--mount",
@@ -69,6 +72,8 @@ def docker_command(
             "/run/sbor/validation.yaml",
             "--dataset-dir",
             "/input",
+            "--labels-path",
+            "/labels/labels.jsonl",
             "--output-dir",
             "/output",
             "--llm-config-stdin",
@@ -121,11 +126,22 @@ def main(
     if not llm_config_text.strip():
         raise click.ClickException("LLM configuration is empty")
 
-    with tempfile.TemporaryDirectory(prefix="sbor-reviewer-input-") as temporary:
-        reviewer_input_dir = Path(temporary)
+    with (
+        tempfile.TemporaryDirectory(
+            prefix="sbor-reviewer-input-"
+        ) as reviewer_temporary,
+        tempfile.TemporaryDirectory(prefix="sbor-judge-labels-") as judge_temporary,
+    ):
+        reviewer_input_dir = Path(reviewer_temporary)
         shutil.copy2(dataset_dir / "input.jsonl", reviewer_input_dir / "input.jsonl")
+        judge_labels_dir = Path(judge_temporary)
+        labels_path = judge_labels_dir / "labels.jsonl"
+        shutil.copy2(dataset_dir / "labels.jsonl", labels_path)
+        judge_labels_dir.chmod(0o700)
+        labels_path.chmod(0o600)
         command = docker_command(
             reviewer_input_dir,
+            judge_labels_dir,
             output_dir,
             validation_config,
             image,

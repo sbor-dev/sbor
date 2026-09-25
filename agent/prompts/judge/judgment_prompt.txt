@@ -1,0 +1,7 @@
+Judge the reviewer report against the hidden reference label for one validation item.
+Read and apply judge-skill before writing the result. Inspect the diff and repository only when needed to resolve a disagreement.
+Validation item key: {key}
+Reviewer report path: {report_path}
+Hidden reference label:
+{label}
+Write judgment.json to {judgment_path} and verify it exists before finishing.
