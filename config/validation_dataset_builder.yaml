@@ -1,6 +1,8 @@
 dataset:
   name: sbor-validation
   version: 0.1.0
+converters:
+  - c_cpp_benchmark
 sources:
   c_cpp_benchmark:
     source_dir: validation/dataset/sources/c_cpp_benchmark

@@ -2,13 +2,12 @@ import json
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Any
 
 import click
 import yaml
 
 from validation.dataset.common import ConvertedItem, DatasetMetadata, JsonObject
-from validation.dataset.converters.c_cpp_benchmark import CCppBenchmarkConverter
+from validation.dataset.converters.factory import create_converter
 
 
 class DatasetBuilder:
@@ -72,22 +71,30 @@ def build_dataset(
     configuration = load_config(config_path)
     dataset_configuration = _required_mapping(configuration, "dataset")
     sources_configuration = _required_mapping(configuration, "sources")
-    c_cpp_configuration = _required_mapping(sources_configuration, "c_cpp_benchmark")
-    source_dir = resolve_source_dir(config_path, c_cpp_configuration)
-    source_version = git_revision(source_dir)
+    converter_names = _required_text_list(configuration, "converters")
     resolved_generator_revision = generator_revision or git_revision(Path.cwd())
-    converter = CCppBenchmarkConverter(
-        source_dir,
-        source_version,
-        _required_text_list(c_cpp_configuration, "functional_categories"),
-    )
+    items: list[ConvertedItem] = []
+
+    for converter_name in converter_names:
+        source_configuration = _required_mapping(
+            sources_configuration, converter_name
+        )
+        source_dir = resolve_source_dir(config_path, source_configuration)
+        converter = create_converter(
+            converter_name,
+            source_dir,
+            git_revision(source_dir),
+            source_configuration,
+        )
+        items.extend(converter.convert())
+
     metadata = DatasetMetadata(
         dataset_name=_required_text(dataset_configuration, "name"),
         dataset_version=_required_text(dataset_configuration, "version"),
         generator_revision=resolved_generator_revision,
     )
 
-    DatasetBuilder(converter.convert(), metadata).write(output_dir)
+    DatasetBuilder(items, metadata).write(output_dir)
 
 
 @click.command()
@@ -168,7 +175,7 @@ def _required_text(configuration: JsonObject, field: str) -> str:
 
 
 def _required_text_list(configuration: JsonObject, field: str) -> list[str]:
-    value: Any = configuration.get(field)
+    value = configuration.get(field)
 
     if not isinstance(value, list) or not value:
         raise ValueError(f"Expected non-empty list field {field}")
