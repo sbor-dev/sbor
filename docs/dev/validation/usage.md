@@ -1,5 +1,10 @@
 # Validation usage
 
+The validation contracts are documented in:
+
+- [Experiment and artifact schemas](artifacts.md)
+- [Validation dataset](dataset.md)
+
 ## Validation dataset
 
 ### Building
