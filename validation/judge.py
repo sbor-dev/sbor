@@ -20,6 +20,7 @@ def render_prompt(
     key: str,
     label: JsonObject,
     report_path: Path,
+    diff_path: Path,
     judgment_path: Path,
 ) -> str:
     template = prompt_path.read_text(encoding="utf-8")
@@ -28,6 +29,7 @@ def render_prompt(
         key=json.dumps(key, ensure_ascii=True),
         label=json.dumps(label, ensure_ascii=True, indent=2),
         report_path=str(report_path),
+        diff_path=str(diff_path),
         judgment_path=str(judgment_path),
     )
 
@@ -63,7 +65,14 @@ def run_judge(
     judgment_path.parent.mkdir()
     user_stat = Path("/home/sbor").stat()
     os.chown(judgment_path.parent, user_stat.st_uid, user_stat.st_gid)
-    prompt = render_prompt(prompt_path, key, label, report_path, judgment_path)
+    prompt = render_prompt(
+        prompt_path,
+        key,
+        label,
+        report_path,
+        prepared.diff_path,
+        judgment_path,
+    )
     command = judge_command(model, prompt)
 
     if verbose:

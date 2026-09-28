@@ -135,4 +135,11 @@ def load_judgment(
     except json.JSONDecodeError as error:
         raise ValueError(f"Invalid judgment.json: {error}") from error
 
+    if isinstance(payload, dict) and "key" not in payload:
+        payload["key"] = required_text(label, "key")
+        path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
+
     return validate_judgment(payload, label, reviewer_findings)

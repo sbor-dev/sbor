@@ -32,5 +32,6 @@ Run validation with Deepseek API
 } | uv run --no-sync python -m validation.validate \
   --dataset-dir sbor-dataset \
   --output-dir runs \
+  --metadata experiment.yaml \
   --verbose
 ```

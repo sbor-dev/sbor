@@ -1,0 +1,34 @@
+schema_version: "1.0"
+experiment:
+  name: local-test
+  run_name: deepseek-chat-e2e
+  tags:
+    purpose: test
+    dataset: local
+dataset:
+  repository: local/sbor-validation
+  revision: local
+  version: "0.1.0"
+  sha256: null
+reviewer:
+  provider: deepseek-api
+  model: deepseek-chat
+  revision: null
+  weight_quantization: null
+  kv_cache_quantization: null
+  context_tokens: null
+  temperature: null
+  seed: null
+  max_output_tokens: null
+  inference_command: null
+judge:
+  provider: deepseek-api
+  model: deepseek-chat
+  revision: null
+  weight_quantization: null
+  kv_cache_quantization: null
+  context_tokens: null
+  temperature: null
+  seed: null
+  max_output_tokens: null
+  inference_command: null

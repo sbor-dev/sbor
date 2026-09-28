@@ -6,6 +6,8 @@ from pathlib import Path
 
 import click
 
+from validation.run_artifacts import load_experiment_metadata
+
 
 def run_command(command: list[str], input_text: str | None = None) -> None:
     result = subprocess.run(command, input=input_text, text=True, check=False)
@@ -39,6 +41,9 @@ def docker_command(
     judge_labels_dir: Path,
     output_dir: Path,
     validation_config: Path,
+    metadata: Path,
+    code_revision: str,
+    code_dirty: bool,
     image: str,
     verbose: bool,
 ) -> list[str]:
@@ -63,6 +68,8 @@ def docker_command(
             "type=bind,source="
             f"{validation_config.resolve()},target=/run/sbor/validation.yaml,readonly",
             "--mount",
+            f"type=bind,source={metadata.resolve()},target=/run/sbor/metadata.yaml,readonly",
+            "--mount",
             f"type=bind,source={output_dir.resolve()},target=/output",
             image,
             "/app/.venv/bin/python",
@@ -70,6 +77,12 @@ def docker_command(
             "validation.runner",
             "--validation-config",
             "/run/sbor/validation.yaml",
+            "--metadata",
+            "/run/sbor/metadata.yaml",
+            "--code-revision",
+            code_revision,
+            "--code-dirty",
+            str(code_dirty).lower(),
             "--dataset-dir",
             "/input",
             "--labels-path",
@@ -102,6 +115,11 @@ def docker_command(
     show_default=True,
 )
 @click.option(
+    "--metadata",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    required=True,
+)
+@click.option(
     "--llm-config",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
 )
@@ -112,16 +130,20 @@ def main(
     dataset_dir: Path,
     output_dir: Path,
     validation_config: Path,
+    metadata: Path,
     llm_config: Path | None,
     image: str,
     rebuild: bool,
     verbose: bool,
 ) -> None:
+    load_experiment_metadata(metadata)
+
     if rebuild or not image_exists(image):
         run_command(["docker", "build", "--tag", image, "."])
 
     output_dir.mkdir(parents=True, exist_ok=True)
     llm_config_text = read_llm_config(llm_config)
+    code_revision, code_dirty = git_state(Path(__file__).resolve().parent.parent)
 
     if not llm_config_text.strip():
         raise click.ClickException("LLM configuration is empty")
@@ -133,6 +155,10 @@ def main(
         tempfile.TemporaryDirectory(prefix="sbor-judge-labels-") as judge_temporary,
     ):
         reviewer_input_dir = Path(reviewer_temporary)
+        shutil.copy2(
+            dataset_dir / "metadata.json",
+            reviewer_input_dir / "metadata.json",
+        )
         shutil.copy2(dataset_dir / "input.jsonl", reviewer_input_dir / "input.jsonl")
         judge_labels_dir = Path(judge_temporary)
         labels_path = judge_labels_dir / "labels.jsonl"
@@ -144,10 +170,37 @@ def main(
             judge_labels_dir,
             output_dir,
             validation_config,
+            metadata,
+            code_revision,
+            code_dirty,
             image,
             verbose,
         )
         run_command(command, llm_config_text)
+
+
+def git_state(directory: Path) -> tuple[str, bool]:
+    revision = subprocess.run(
+        ["git", "-C", str(directory), "rev-parse", "HEAD"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if revision.returncode:
+        raise click.ClickException("Could not determine the code revision")
+
+    status = subprocess.run(
+        ["git", "-C", str(directory), "status", "--porcelain"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    if status.returncode:
+        raise click.ClickException("Could not determine whether the code is dirty")
+
+    return revision.stdout.strip(), bool(status.stdout.strip())
 
 
 if __name__ == "__main__":
