@@ -1,13 +1,19 @@
 import json
 import subprocess
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import click
 import yaml
 
 from validation.dataset.common import ConvertedItem, DatasetMetadata, JsonObject
 from validation.dataset.converters.factory import create_converter
+from validation.dataset.repository_validation import (
+    RepositoryValidationError,
+    validate_repository,
+)
 
 
 class DatasetBuilder:
@@ -68,12 +74,13 @@ def build_dataset(
     output_dir: Path,
     generator_revision: str | None,
 ) -> None:
+    started_at = _timestamp()
     configuration = load_config(config_path)
     dataset_configuration = _required_mapping(configuration, "dataset")
     sources_configuration = _required_mapping(configuration, "sources")
     converter_names = _required_text_list(configuration, "converters")
     resolved_generator_revision = generator_revision or git_revision(Path.cwd())
-    items: list[ConvertedItem] = []
+    converted_items: list[ConvertedItem] = []
 
     for converter_name in converter_names:
         source_configuration = _required_mapping(
@@ -86,7 +93,12 @@ def build_dataset(
             git_revision(source_dir),
             source_configuration,
         )
-        items.extend(converter.convert())
+        converted_items.extend(converter.convert())
+
+    items, skipped, source_counts = validate_items(
+        converted_items,
+        converter_names,
+    )
 
     metadata = DatasetMetadata(
         dataset_name=_required_text(dataset_configuration, "name"),
@@ -95,6 +107,99 @@ def build_dataset(
     )
 
     DatasetBuilder(items, metadata).write(output_dir)
+    write_build_report(
+        output_dir / "build-report.json",
+        metadata.dataset_version,
+        started_at,
+        items,
+        skipped,
+        source_counts,
+    )
+
+
+def validate_items(
+    items: Iterable[ConvertedItem],
+    source_names: Iterable[str],
+) -> tuple[list[ConvertedItem], list[JsonObject], dict[str, JsonObject]]:
+    valid_items: list[ConvertedItem] = []
+    skipped: list[JsonObject] = []
+    source_counts: dict[str, JsonObject] = {
+        source_name: {"written": 0, "skipped": 0}
+        for source_name in source_names
+    }
+
+    with TemporaryDirectory(prefix="sbor-dataset-validation-") as temporary:
+        validation_dir = Path(temporary)
+
+        for item in items:
+            source_name = _item_source(item)
+            counts = source_counts.setdefault(
+                source_name,
+                {"written": 0, "skipped": 0},
+            )
+
+            try:
+                validate_repository(item.input_item, validation_dir / item.key)
+            except RepositoryValidationError as error:
+                source_id = _item_source_id(item)
+                click.echo(
+                    f"Skipping {source_name}:{source_id}: "
+                    f"{error.reason}: {error.detail}",
+                    err=True,
+                )
+                counts["skipped"] += 1
+                skipped.append(
+                    {
+                        "source": source_name,
+                        "source_id": source_id,
+                        "reason": error.reason,
+                        "detail": error.detail,
+                    }
+                )
+                continue
+
+            counts["written"] += 1
+            valid_items.append(item)
+
+    return valid_items, skipped, source_counts
+
+
+def write_build_report(
+    path: Path,
+    dataset_version: str,
+    started_at: str,
+    items: list[ConvertedItem],
+    skipped: list[JsonObject],
+    source_counts: dict[str, JsonObject],
+) -> None:
+    payload = {
+        "schema_version": "1.0",
+        "dataset_version": dataset_version,
+        "started_at": started_at,
+        "finished_at": _timestamp(),
+        "items_written": len(items),
+        "items_skipped": len(skipped),
+        "sources": source_counts,
+        "skipped": skipped,
+    }
+    path.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _item_source(item: ConvertedItem) -> str:
+    source = _required_mapping(item.input_item, "source")
+    return _required_text(source, "dataset")
+
+
+def _item_source_id(item: ConvertedItem) -> str:
+    mr = _required_mapping(item.input_item, "mr")
+    return _required_text(mr, "url")
+
+
+def _timestamp() -> str:
+    return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
 @click.command()
