@@ -35,6 +35,8 @@ from validation.run_artifacts import (
     validate_runtime_models,
 )
 
+JUDGE_ATTEMPTS = 2
+
 
 def load_input_items(path: Path) -> list[JsonObject]:
     items: list[JsonObject] = []
@@ -229,32 +231,63 @@ def run_item(
                     err=True,
                 )
 
-            run_judge(
-                prepared,
-                report_dir / "report.json",
-                judgment_path,
-                model,
-                key,
-                label,
-                verbose,
-            )
-            stages["judge"]["finished_at"] = _timestamp()
-            stage = "judgment_validation"
-            _write_item_progress(
-                result_path,
-                key,
-                stage,
-                started_at,
-                stages,
-                diff,
-            )
-
-            if verbose:
-                click.echo(f"{key}: validating judgment", err=True)
-
             judgment_output_path = result_dir / "judgment.json"
-            shutil.copy2(judgment_path, judgment_output_path)
-            judgment = load_judgment(judgment_path, label, findings)
+            validation_error: str | None = None
+
+            for attempt in range(1, JUDGE_ATTEMPTS + 1):
+                judgment_path.unlink(missing_ok=True)
+                run_judge(
+                    prepared,
+                    report_dir / "report.json",
+                    judgment_path,
+                    model,
+                    key,
+                    label,
+                    verbose,
+                    validation_error=validation_error,
+                )
+                stages["judge"]["finished_at"] = _timestamp()
+                stage = "judgment_validation"
+                _write_item_progress(
+                    result_path,
+                    key,
+                    stage,
+                    started_at,
+                    stages,
+                    diff,
+                )
+
+                if verbose:
+                    click.echo(f"{key}: validating judgment", err=True)
+
+                if judgment_path.is_file():
+                    shutil.copy2(judgment_path, judgment_output_path)
+
+                try:
+                    judgment = load_judgment(judgment_path, label, findings)
+                    break
+                except ValueError as error:
+                    if attempt == JUDGE_ATTEMPTS:
+                        raise
+
+                    validation_error = str(error)
+                    stage = "judge"
+                    stages["judge"]["finished_at"] = None
+                    _write_item_progress(
+                        result_path,
+                        key,
+                        stage,
+                        started_at,
+                        stages,
+                        diff,
+                    )
+
+                    if verbose:
+                        click.echo(
+                            f"{key}: judgment validation failed: {error}; "
+                            "retrying judge once",
+                            err=True,
+                        )
 
             if verbose:
                 click.echo(

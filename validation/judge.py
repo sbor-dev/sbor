@@ -9,6 +9,9 @@ from validation.reviewer import configure_pi
 
 JUDGE_DIR = Path("/home/sbor/.pi/judge")
 PROMPT_PATH = JUDGE_DIR / "judgment_prompt.txt"
+SYSTEM_PATH = JUDGE_DIR / "SYSTEM.md"
+SKILL_PATH = JUDGE_DIR / "skills/judge-skill/SKILL.md"
+TEMPLATE_PATH = JUDGE_DIR / "skills/judge-skill/assets/template.json"
 
 
 def configure_judge_pi(llm_configuration: JsonObject) -> str:
@@ -22,8 +25,18 @@ def render_prompt(
     report_path: Path,
     diff_path: Path,
     judgment_path: Path,
+    template_path: Path = TEMPLATE_PATH,
+    validation_error: str | None = None,
 ) -> str:
     template = prompt_path.read_text(encoding="utf-8")
+    repair_instruction = ""
+
+    if validation_error is not None:
+        repair_instruction = (
+            "A previous judgment failed validation with this error:\n"
+            f"{validation_error}\n"
+            "Rewrite judgment.json from scratch. Do not preserve the previous shape."
+        )
 
     return template.format(
         key=json.dumps(key, ensure_ascii=True),
@@ -31,6 +44,8 @@ def render_prompt(
         report_path=str(report_path),
         diff_path=str(diff_path),
         judgment_path=str(judgment_path),
+        judgment_schema=template_path.read_text(encoding="utf-8").strip(),
+        repair_instruction=repair_instruction,
     )
 
 
@@ -44,6 +59,13 @@ def judge_command(model: str, prompt: str) -> list[str]:
         "HOME=/home/sbor",
         f"PI_CODING_AGENT_DIR={JUDGE_DIR}",
         "pi",
+        "--print",
+        "--no-session",
+        "--no-context-files",
+        "--system-prompt",
+        SYSTEM_PATH.read_text(encoding="utf-8"),
+        "--skill",
+        str(SKILL_PATH),
         "--provider",
         "validation",
         "--model",
@@ -61,8 +83,9 @@ def run_judge(
     label: JsonObject,
     verbose: bool,
     prompt_path: Path = PROMPT_PATH,
+    validation_error: str | None = None,
 ) -> None:
-    judgment_path.parent.mkdir()
+    judgment_path.parent.mkdir(exist_ok=True)
     user_stat = Path("/home/sbor").stat()
     os.chown(judgment_path.parent, user_stat.st_uid, user_stat.st_gid)
     prompt = render_prompt(
@@ -72,6 +95,7 @@ def run_judge(
         report_path,
         prepared.diff_path,
         judgment_path,
+        validation_error=validation_error,
     )
     command = judge_command(model, prompt)
 

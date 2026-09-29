@@ -57,6 +57,8 @@ def validate_judgment(
     reviewer_ids = {required_text(finding, "id") for finding in reviewer_findings}
     assessed_label_indexes: set[int] = set()
     assessed_reviewer_ids: set[str] = set()
+    label_references: dict[int, set[str]] = {}
+    reviewer_references: dict[str, set[int]] = {}
 
     for assessment in label_assessments:
         if not isinstance(assessment, dict):
@@ -81,7 +83,14 @@ def validate_judgment(
         if not set(finding_ids).issubset(reviewer_ids):
             raise ValueError("Label assessment references an unknown reviewer finding")
 
+        if verdict == "matched" and not finding_ids:
+            raise ValueError("Matched label must reference a reviewer finding")
+
+        if verdict == "missed" and finding_ids:
+            raise ValueError("Missed label must not reference reviewer findings")
+
         required_text(assessment, "reason")
+        label_references[label_index] = set(finding_ids)
 
     if assessed_label_indexes != set(range(len(defects))):
         raise ValueError("Judgment label assessments must cover every label")
@@ -114,10 +123,24 @@ def validate_judgment(
         ):
             raise ValueError("Judgment reviewer assessment has invalid label indexes")
 
+        if verdict == "unsupported" and label_indexes:
+            raise ValueError("Unsupported reviewer finding must not reference labels")
+
         required_text(assessment, "reason")
+        reviewer_references[finding_id] = set(label_indexes)
 
     if assessed_reviewer_ids != reviewer_ids:
         raise ValueError("Judgment reviewer assessments must cover every finding")
+
+    for label_index, finding_ids in label_references.items():
+        symmetric_ids = {
+            finding_id
+            for finding_id, label_indexes in reviewer_references.items()
+            if label_index in label_indexes
+        }
+
+        if finding_ids != symmetric_ids:
+            raise ValueError("Judgment label and reviewer references must be symmetric")
 
     return payload
 
