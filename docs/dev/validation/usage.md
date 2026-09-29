@@ -19,6 +19,16 @@ or via uv:
 uv run python -m validation.dataset.build --output-dir sbor-dataset
 ```
 
+### Generating subsets
+
+Subset membership is defined by item keys in `config/validation_dataset_subsets.yaml`. Generate the configured datasets with:
+
+```bash
+uv run python -m validation.dataset.subsets --dataset-dir sbor-dataset --output-dir sbor-dataset/subsets/
+```
+
+Each generated subset is a standalone dataset directory containing a copy of `metadata.json` and filtered `input.jsonl` and `labels.jsonl` files
+
 ## Validation
 
 Run validation with Deepseek API
