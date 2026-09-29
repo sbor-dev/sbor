@@ -10,13 +10,13 @@ The validation contracts are documented in:
 ### Building
 
 ```bash
-python -m validation.dataset.build --output-dir sbor-dataset
+python -m validation.dataset.build --output-dir sbor-dataset --verbose
 ```
 
 or via uv:
 
 ```bash
-uv run python -m validation.dataset.build --output-dir sbor-dataset
+uv run python -m validation.dataset.build --output-dir sbor-dataset --verbose
 ```
 
 ### Generating subsets
@@ -24,7 +24,10 @@ uv run python -m validation.dataset.build --output-dir sbor-dataset
 Subset membership is defined by item keys in `config/validation_dataset_subsets.yaml`. Generate the configured datasets with:
 
 ```bash
-uv run python -m validation.dataset.subsets --dataset-dir sbor-dataset --output-dir sbor-dataset/subsets/
+uv run python -m validation.dataset.subsets \
+  --dataset-dir sbor-dataset \
+  --output-dir sbor-dataset/subsets/ \
+  --verbose
 ```
 
 Each generated subset is a standalone dataset directory containing a copy of `metadata.json` and filtered `input.jsonl` and `labels.jsonl` files
