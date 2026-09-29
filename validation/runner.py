@@ -67,6 +67,15 @@ def item_timeout_seconds(configuration: JsonObject) -> int:
     return value
 
 
+def configuration_flag(configuration: JsonObject, field: str) -> bool:
+    value = configuration.get(field)
+
+    if not isinstance(value, bool):
+        raise ValueError(f"{field} must be a boolean")
+
+    return value
+
+
 def load_labels(path: Path) -> dict[str, JsonObject]:
     labels: dict[str, JsonObject] = {}
 
@@ -92,6 +101,7 @@ def run_item(
     output_dir: Path,
     model: str,
     verbose: bool,
+    capture_reasoning: bool = False,
 ) -> JsonObject:
     key = required_text(item, "key")
     mr = required_mapping(item, "mr")
@@ -173,6 +183,11 @@ def run_item(
                 title,
                 description,
                 verbose,
+                reasoning_path=(
+                    result_dir / "reviewer-reasoning.txt"
+                    if capture_reasoning
+                    else None
+                ),
             )
             stages["reviewer"]["finished_at"] = _timestamp()
             stage = "report_validation"
@@ -226,6 +241,11 @@ def run_item(
                     label,
                     verbose,
                     validation_error=validation_error,
+                    reasoning_path=(
+                        result_dir / "judge-reasoning.txt"
+                        if capture_reasoning
+                        else None
+                    ),
                 )
                 stages["judge"]["finished_at"] = _timestamp()
                 stage = "judgment_validation"
@@ -315,6 +335,7 @@ def run_item_with_timeout(
     model: str,
     verbose: bool,
     timeout_seconds: int,
+    capture_reasoning: bool = False,
 ) -> JsonObject:
     context = multiprocessing.get_context("fork")
     parent_connection, child_connection = context.Pipe(duplex=False)
@@ -327,6 +348,7 @@ def run_item_with_timeout(
             output_dir,
             model,
             verbose,
+            capture_reasoning,
         ),
     )
     process.start()
@@ -365,10 +387,18 @@ def _run_item_process(
     output_dir: Path,
     model: str,
     verbose: bool,
+    capture_reasoning: bool,
 ) -> None:
     try:
         os.setsid()
-        result = run_item(item, label, output_dir, model, verbose)
+        result = run_item(
+            item,
+            label,
+            output_dir,
+            model,
+            verbose,
+            capture_reasoning,
+        )
     except Exception as error:
         result = {
             "key": item.get("key"),
@@ -564,6 +594,8 @@ def main(
     configuration = load_yaml_mapping(validation_config)
     experiment_metadata = load_experiment_metadata(metadata)
     timeout_seconds = item_timeout_seconds(configuration)
+    verbose = configuration_flag(configuration, "verbose")
+    capture_reasoning = configuration_flag(configuration, "capture_reasoning")
 
     if (llm_config is not None) == llm_config_stdin:
         raise click.ClickException(
@@ -582,7 +614,6 @@ def main(
 
     items = load_input_items(dataset_dir / "input.jsonl")
     labels = load_labels(labels_path)
-    verbose = os.environ.get("SBOR_VALIDATION_VERBOSE") == "true"
     output_dir.mkdir(parents=True, exist_ok=True)
     artifacts = create_run_artifacts(
         output_dir,
@@ -596,21 +627,37 @@ def main(
     results: list[JsonObject] = []
     status = "failed"
 
+    if verbose:
+        click.echo(
+            f"Starting validation run {artifacts.run_id} with "
+            f"{len(items)} items using model {model}",
+            err=True,
+        )
+
     try:
-        for item in items:
+        for index, item in enumerate(items, start=1):
             key = required_text(item, "key")
 
+            if verbose:
+                click.echo(f"[{index}/{len(items)}] {key}: started", err=True)
+
             try:
-                results.append(
-                    run_item_with_timeout(
-                        item,
-                        labels.get(key),
-                        artifacts.run_dir,
-                        model,
-                        verbose,
-                        timeout_seconds,
-                    )
+                result = run_item_with_timeout(
+                    item,
+                    labels.get(key),
+                    artifacts.run_dir,
+                    model,
+                    verbose,
+                    timeout_seconds,
+                    capture_reasoning,
                 )
+                results.append(result)
+
+                if verbose:
+                    click.echo(
+                        f"[{index}/{len(items)}] {key}: {result['status']}",
+                        err=True,
+                    )
             except (
                 OSError,
                 RuntimeError,
@@ -624,6 +671,12 @@ def main(
         status = "failed" if failed else "completed"
     finally:
         artifacts.finish(status)
+
+        if verbose:
+            click.echo(
+                f"Validation run {artifacts.run_id} finished with status {status}",
+                err=True,
+            )
 
     if failed:
         raise click.ClickException(f"Validation failed for {len(failed)} item(s)")

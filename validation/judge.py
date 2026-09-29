@@ -5,6 +5,7 @@ from pathlib import Path
 
 from validation.common import JsonObject
 from validation.downloader import PreparedReview
+from validation.pi_output import run_pi_with_reasoning_capture
 from validation.reviewer import configure_pi
 
 JUDGE_DIR = Path("/home/sbor/.pi/judge")
@@ -49,8 +50,12 @@ def render_prompt(
     )
 
 
-def judge_command(model: str, prompt: str) -> list[str]:
-    return [
+def judge_command(
+    model: str,
+    prompt: str,
+    capture_reasoning: bool = False,
+) -> list[str]:
+    command = [
         "runuser",
         "-u",
         "sbor",
@@ -59,19 +64,29 @@ def judge_command(model: str, prompt: str) -> list[str]:
         "HOME=/home/sbor",
         f"PI_CODING_AGENT_DIR={JUDGE_DIR}",
         "pi",
-        "--print",
-        "--no-session",
-        "--no-context-files",
-        "--system-prompt",
-        SYSTEM_PATH.read_text(encoding="utf-8"),
-        "--skill",
-        str(SKILL_PATH),
-        "--provider",
-        "validation",
-        "--model",
-        model,
-        prompt,
     ]
+
+    if capture_reasoning:
+        command.extend(["--mode", "json"])
+    else:
+        command.append("--print")
+
+    command.extend(
+        [
+            "--no-session",
+            "--no-context-files",
+            "--system-prompt",
+            SYSTEM_PATH.read_text(encoding="utf-8"),
+            "--skill",
+            str(SKILL_PATH),
+            "--provider",
+            "validation",
+            "--model",
+            model,
+            prompt,
+        ]
+    )
+    return command
 
 
 def run_judge(
@@ -84,6 +99,7 @@ def run_judge(
     verbose: bool,
     prompt_path: Path = PROMPT_PATH,
     validation_error: str | None = None,
+    reasoning_path: Path | None = None,
 ) -> None:
     judgment_path.parent.mkdir(exist_ok=True)
     user_stat = Path("/home/sbor").stat()
@@ -97,7 +113,17 @@ def run_judge(
         judgment_path,
         validation_error=validation_error,
     )
-    command = judge_command(model, prompt)
+    command = judge_command(model, prompt, reasoning_path is not None)
+
+    if reasoning_path is not None:
+        run_pi_with_reasoning_capture(
+            command,
+            prepared.repository_dir,
+            reasoning_path,
+            verbose,
+            "Judge",
+        )
+        return
 
     if verbose:
         result = subprocess.run(

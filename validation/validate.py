@@ -45,7 +45,6 @@ def docker_command(
     code_revision: str,
     code_dirty: bool,
     image: str,
-    verbose: bool,
 ) -> list[str]:
     command = [
         "docker",
@@ -54,9 +53,6 @@ def docker_command(
         "--interactive",
         "--add-host=host.docker.internal:host-gateway",
     ]
-
-    if verbose:
-        command.extend(["--env", "SBOR_VALIDATION_VERBOSE=true"])
 
     command.extend(
         [
@@ -125,7 +121,6 @@ def docker_command(
 )
 @click.option("--image", default="sbor", show_default=True)
 @click.option("--rebuild", is_flag=True)
-@click.option("--verbose", is_flag=True)
 def main(
     dataset_dir: Path,
     output_dir: Path,
@@ -134,7 +129,6 @@ def main(
     llm_config: Path | None,
     image: str,
     rebuild: bool,
-    verbose: bool,
 ) -> None:
     load_experiment_metadata(metadata)
 
@@ -174,7 +168,6 @@ def main(
             code_revision,
             code_dirty,
             image,
-            verbose,
         )
         run_command(command, llm_config_text)
 

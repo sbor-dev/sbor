@@ -45,6 +45,8 @@ Run validation with Deepseek API
 } | uv run --no-sync python -m validation.validate \
   --dataset-dir sbor-dataset \
   --output-dir runs \
-  --metadata experiment.yaml \
-  --verbose
+  --metadata experiment.yaml
 ```
+
+Validation progress and agent output are streamed when `verbose: true` is set
+in `config/validation.yaml`.
