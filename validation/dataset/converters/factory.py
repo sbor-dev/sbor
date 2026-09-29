@@ -2,6 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from validation.dataset.common import JsonObject
+from validation.dataset.converters.aacr_bench import AacrBenchConverter
 from validation.dataset.converters.base_converter import Converter
 from validation.dataset.converters.c_cpp_benchmark import CCppBenchmarkConverter
 
@@ -12,6 +13,13 @@ def create_converter(
     source_version: str,
     configuration: JsonObject,
 ) -> Converter:
+    if name == "aacr_bench":
+        return AacrBenchConverter(
+            source_dir,
+            source_version,
+            _required_text_list(configuration, "functional_categories"),
+        )
+
     if name == "c_cpp_benchmark":
         return CCppBenchmarkConverter(
             source_dir,

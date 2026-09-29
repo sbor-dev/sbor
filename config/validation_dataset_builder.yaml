@@ -1,8 +1,9 @@
 dataset:
   name: sbor-validation
-  version: 0.1.0
+  version: 0.2.0
 converters:
   - c_cpp_benchmark
+  - aacr_bench
 sources:
   c_cpp_benchmark:
     source_dir: validation/dataset/sources/c_cpp_benchmark
@@ -12,3 +13,8 @@ sources:
       - edge_case_handling
       - concurrency_safety
       - error_handling
+  aacr_bench:
+    source_dir: validation/dataset/sources/aacr_bench
+    functional_categories:
+      - Code Defect
+      - Security Vulnerability
