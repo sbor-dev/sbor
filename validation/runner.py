@@ -1,9 +1,13 @@
 import json
+import multiprocessing
 import os
 import shutil
+import signal
 import subprocess
 import tempfile
 from datetime import UTC, datetime
+from multiprocessing.connection import Connection
+from multiprocessing.process import BaseProcess
 from pathlib import Path
 
 import click
@@ -64,6 +68,15 @@ def item_limit(configuration: JsonObject) -> int | None:
     return value
 
 
+def item_timeout_seconds(configuration: JsonObject) -> int:
+    value = configuration.get("item_timeout_seconds")
+
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
+        raise ValueError("item_timeout_seconds must be a positive integer")
+
+    return value
+
+
 def select_items(items: list[JsonObject], limit: int | None) -> list[JsonObject]:
     if limit is None:
         return items
@@ -120,6 +133,15 @@ def run_item(
         "target_revision": target_revision,
         "sha256": None,
     }
+    result_path = result_dir / "result.json"
+    _write_item_progress(
+        result_path,
+        key,
+        stage,
+        started_at,
+        stages,
+        diff,
+    )
 
     try:
         if label is None:
@@ -131,6 +153,14 @@ def run_item(
             os.chown(work_dir, user_id, group_id)
             work_dir.chmod(0o755)
             stages["fetch"]["started_at"] = _timestamp()
+            _write_item_progress(
+                result_path,
+                key,
+                stage,
+                started_at,
+                stages,
+                diff,
+            )
 
             if verbose:
                 click.echo(f"{key}: preparing repository", err=True)
@@ -141,6 +171,14 @@ def run_item(
             report_dir = work_dir / "report"
             stage = "reviewer"
             stages["reviewer"]["started_at"] = _timestamp()
+            _write_item_progress(
+                result_path,
+                key,
+                stage,
+                started_at,
+                stages,
+                diff,
+            )
 
             if verbose:
                 click.echo(f"{key}: running reviewer", err=True)
@@ -155,6 +193,14 @@ def run_item(
             )
             stages["reviewer"]["finished_at"] = _timestamp()
             stage = "report_validation"
+            _write_item_progress(
+                result_path,
+                key,
+                stage,
+                started_at,
+                stages,
+                diff,
+            )
 
             if verbose:
                 click.echo(f"{key}: validating report", err=True)
@@ -166,6 +212,14 @@ def run_item(
             judgment_path = judgment_dir / "judgment.json"
             stage = "judge"
             stages["judge"]["started_at"] = _timestamp()
+            _write_item_progress(
+                result_path,
+                key,
+                stage,
+                started_at,
+                stages,
+                diff,
+            )
 
             if verbose:
                 label_defects = label["defects"]
@@ -186,6 +240,14 @@ def run_item(
             )
             stages["judge"]["finished_at"] = _timestamp()
             stage = "judgment_validation"
+            _write_item_progress(
+                result_path,
+                key,
+                stage,
+                started_at,
+                stages,
+                diff,
+            )
 
             if verbose:
                 click.echo(f"{key}: validating judgment", err=True)
@@ -212,6 +274,7 @@ def run_item(
             stages,
             diff,
             None,
+            _timestamp(),
         )
     except Exception as error:
         result = _item_result(
@@ -222,12 +285,186 @@ def run_item(
             stages,
             diff,
             str(error),
+            _timestamp(),
         )
-        _write_json(result_dir / "result.json", result)
+        _write_json(result_path, result)
         raise
 
-    _write_json(result_dir / "result.json", result)
+    _write_json(result_path, result)
     return result
+
+
+def run_item_with_timeout(
+    item: JsonObject,
+    label: JsonObject | None,
+    output_dir: Path,
+    model: str,
+    verbose: bool,
+    timeout_seconds: int,
+) -> JsonObject:
+    context = multiprocessing.get_context("fork")
+    parent_connection, child_connection = context.Pipe(duplex=False)
+    process = context.Process(
+        target=_run_item_process,
+        args=(
+            child_connection,
+            item,
+            label,
+            output_dir,
+            model,
+            verbose,
+        ),
+    )
+    process.start()
+    child_connection.close()
+    process.join(timeout_seconds)
+
+    if process.is_alive():
+        _terminate_process_group(process)
+        parent_connection.close()
+        key = required_text(item, "key")
+        message = f"Item timed out after {timeout_seconds} seconds"
+        click.echo(f"{key}: {message}", err=True)
+        return _finalize_interrupted_item(item, output_dir, "timed_out", message)
+
+    result: JsonObject
+
+    if parent_connection.poll():
+        result = parent_connection.recv()
+    else:
+        message = f"Item process exited with code {process.exitcode}"
+        result = _finalize_interrupted_item(item, output_dir, "failed", message)
+
+    parent_connection.close()
+    process.close()
+
+    if result.get("status") == "failed":
+        click.echo(f"{required_text(item, 'key')}: {result.get('error')}", err=True)
+
+    return result
+
+
+def _run_item_process(
+    connection: Connection,
+    item: JsonObject,
+    label: JsonObject | None,
+    output_dir: Path,
+    model: str,
+    verbose: bool,
+) -> None:
+    try:
+        os.setsid()
+        result = run_item(item, label, output_dir, model, verbose)
+    except Exception as error:
+        result = {
+            "key": item.get("key"),
+            "status": "failed",
+            "error": str(error),
+        }
+
+    try:
+        connection.send(result)
+    finally:
+        connection.close()
+
+
+def _terminate_process_group(process: BaseProcess) -> None:
+    if process.pid is None:
+        return
+
+    try:
+        process_group = os.getpgid(process.pid)
+    except ProcessLookupError:
+        process.join()
+        process.close()
+        return
+
+    try:
+        if process_group == process.pid:
+            os.killpg(process_group, signal.SIGTERM)
+        else:
+            process.terminate()
+    except ProcessLookupError:
+        process.join()
+        process.close()
+        return
+
+    process.join(2)
+
+    if process.is_alive():
+        if process_group == process.pid:
+            os.killpg(process_group, signal.SIGKILL)
+        else:
+            process.kill()
+
+        process.join()
+
+    process.close()
+
+
+def _finalize_interrupted_item(
+    item: JsonObject,
+    output_dir: Path,
+    status: str,
+    error: str,
+) -> JsonObject:
+    key = required_text(item, "key")
+    result_path = output_dir / "items" / key / "result.json"
+
+    try:
+        payload = json.loads(result_path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError):
+        mr = required_mapping(item, "mr")
+        payload = _item_result(
+            key,
+            "running",
+            "fetch",
+            _timestamp(),
+            {
+                name: {"started_at": None, "finished_at": None}
+                for name in ("fetch", "reviewer", "judge")
+            },
+            {
+                "base_revision": required_text(mr, "base_sha"),
+                "target_revision": required_text(mr, "head_sha"),
+                "sha256": None,
+            },
+            None,
+            None,
+        )
+
+    if not isinstance(payload, dict):
+        raise ValueError(f"Expected JSON object in {result_path}")
+
+    payload["status"] = status
+    payload["finished_at"] = _timestamp()
+    payload["error"] = error
+    result_path.parent.mkdir(parents=True, exist_ok=True)
+    _write_json(result_path, payload)
+    return payload
+
+
+def _write_item_progress(
+    path: Path,
+    key: str,
+    stage: str,
+    started_at: str,
+    stages: JsonObject,
+    diff: JsonObject,
+) -> None:
+    _write_json(
+        path,
+        _item_result(
+            key,
+            "running",
+            stage,
+            started_at,
+            stages,
+            diff,
+            None,
+            None,
+        ),
+    )
 
 
 def _item_result(
@@ -238,6 +475,7 @@ def _item_result(
     stages: JsonObject,
     diff: JsonObject,
     error: str | None,
+    finished_at: str | None,
 ) -> JsonObject:
     return {
         "schema_version": "1.0",
@@ -245,7 +483,7 @@ def _item_result(
         "status": status,
         "stage": stage,
         "started_at": started_at,
-        "finished_at": _timestamp(),
+        "finished_at": finished_at,
         "stages": stages,
         "diff": diff,
         "error": error,
@@ -253,10 +491,12 @@ def _item_result(
 
 
 def _write_json(path: Path, payload: JsonObject) -> None:
-    path.write_text(
+    temporary_path = path.with_suffix(f"{path.suffix}.tmp")
+    temporary_path.write_text(
         json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
+    temporary_path.replace(path)
 
 
 def _timestamp() -> str:
@@ -310,6 +550,7 @@ def main(
     configuration = load_yaml_mapping(validation_config)
     experiment_metadata = load_experiment_metadata(metadata)
     limit = item_limit(configuration)
+    timeout_seconds = item_timeout_seconds(configuration)
 
     if (llm_config is not None) == llm_config_stdin:
         raise click.ClickException(
@@ -348,7 +589,14 @@ def main(
 
             try:
                 results.append(
-                    run_item(item, labels.get(key), artifacts.run_dir, model, verbose)
+                    run_item_with_timeout(
+                        item,
+                        labels.get(key),
+                        artifacts.run_dir,
+                        model,
+                        verbose,
+                        timeout_seconds,
+                    )
                 )
             except (
                 OSError,
@@ -359,7 +607,7 @@ def main(
                 click.echo(f"{key}: {error}", err=True)
                 results.append({"key": key, "status": "failed", "error": str(error)})
 
-        failed = [result for result in results if result["status"] == "failed"]
+        failed = [result for result in results if result["status"] != "succeeded"]
         status = "failed" if failed else "completed"
     finally:
         artifacts.finish(status)
