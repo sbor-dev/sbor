@@ -73,6 +73,7 @@ def build_dataset(
     config_path: Path,
     output_dir: Path,
     generator_revision: str | None,
+    verbose: bool = False,
 ) -> None:
     started_at = _timestamp()
     configuration = load_config(config_path)
@@ -83,6 +84,9 @@ def build_dataset(
     converted_items: list[ConvertedItem] = []
 
     for converter_name in converter_names:
+        if verbose:
+            click.echo(f"Loading dataset source {converter_name}", err=True)
+
         source_configuration = _required_mapping(
             sources_configuration, converter_name
         )
@@ -93,11 +97,19 @@ def build_dataset(
             git_revision(source_dir),
             source_configuration,
         )
-        converted_items.extend(converter.convert())
+        source_items = list(converter.convert())
+        converted_items.extend(source_items)
+
+        if verbose:
+            click.echo(
+                f"Converted {len(source_items)} items from {converter_name}",
+                err=True,
+            )
 
     items, skipped, source_counts = validate_items(
         converted_items,
         converter_names,
+        verbose,
     )
 
     metadata = DatasetMetadata(
@@ -105,6 +117,12 @@ def build_dataset(
         dataset_version=_required_text(dataset_configuration, "version"),
         generator_revision=resolved_generator_revision,
     )
+
+    if verbose:
+        click.echo(
+            f"Writing {len(items)} validated items to {output_dir}",
+            err=True,
+        )
 
     DatasetBuilder(items, metadata).write(output_dir)
     write_build_report(
@@ -116,11 +134,20 @@ def build_dataset(
         source_counts,
     )
 
+    if verbose:
+        click.echo(
+            f"Dataset build completed: {len(items)} written, "
+            f"{len(skipped)} skipped",
+            err=True,
+        )
+
 
 def validate_items(
     items: Iterable[ConvertedItem],
     source_names: Iterable[str],
+    verbose: bool = False,
 ) -> tuple[list[ConvertedItem], list[JsonObject], dict[str, JsonObject]]:
+    items = tuple(items)
     valid_items: list[ConvertedItem] = []
     skipped: list[JsonObject] = []
     source_counts: dict[str, JsonObject] = {
@@ -131,17 +158,24 @@ def validate_items(
     with TemporaryDirectory(prefix="sbor-dataset-validation-") as temporary:
         validation_dir = Path(temporary)
 
-        for item in items:
+        for index, item in enumerate(items, start=1):
             source_name = _item_source(item)
+            source_id = _item_source_id(item)
             counts = source_counts.setdefault(
                 source_name,
                 {"written": 0, "skipped": 0},
             )
 
+            if verbose:
+                click.echo(
+                    f"[{index}/{len(items)}] Validating "
+                    f"{source_name}:{source_id}",
+                    err=True,
+                )
+
             try:
                 validate_repository(item.input_item, validation_dir / item.key)
             except RepositoryValidationError as error:
-                source_id = _item_source_id(item)
                 click.echo(
                     f"Skipping {source_name}:{source_id}: "
                     f"{error.reason}: {error.detail}",
@@ -160,6 +194,12 @@ def validate_items(
 
             counts["written"] += 1
             valid_items.append(item)
+
+            if verbose:
+                click.echo(
+                    f"[{index}/{len(items)}] Repository and revisions are available",
+                    err=True,
+                )
 
     return valid_items, skipped, source_counts
 
@@ -216,12 +256,14 @@ def _timestamp() -> str:
     required=True,
 )
 @click.option("--generator-revision")
+@click.option("--verbose", is_flag=True)
 def main(
     config_path: Path,
     output_dir: Path,
     generator_revision: str | None,
+    verbose: bool,
 ) -> None:
-    build_dataset(config_path, output_dir, generator_revision)
+    build_dataset(config_path, output_dir, generator_revision, verbose)
 
 
 def git_revision(directory: Path) -> str:
