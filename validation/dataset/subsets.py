@@ -15,6 +15,7 @@ def generate_subsets(
     dataset_dir: Path,
     config_path: Path,
     output_dir: Path,
+    verbose: bool = False,
 ) -> None:
     dataset_dir = Path(dataset_dir)
     output_dir = Path(output_dir)
@@ -32,6 +33,12 @@ def generate_subsets(
 
     if input_records.keys() != label_records.keys():
         raise ValueError("Dataset input and label keys do not match")
+
+    if verbose:
+        click.echo(
+            f"Loaded {len(input_records)} items from {dataset_dir}",
+            err=True,
+        )
 
     subsets = load_subset_config(config_path)
 
@@ -54,6 +61,12 @@ def generate_subsets(
         staging_dir.mkdir()
 
         for subset_name, keys in subsets.items():
+            if verbose:
+                click.echo(
+                    f"Writing subset {subset_name} with {len(keys)} items",
+                    err=True,
+                )
+
             subset_dir = staging_dir / subset_name
             subset_dir.mkdir()
             shutil.copy2(metadata_path, subset_dir / "metadata.json")
@@ -70,6 +83,12 @@ def generate_subsets(
             )
 
         staging_dir.replace(output_dir)
+
+    if verbose:
+        click.echo(
+            f"Generated {len(subsets)} subsets in {output_dir}",
+            err=True,
+        )
 
 
 def load_subset_config(path: Path) -> dict[str, tuple[str, ...]]:
@@ -173,8 +192,14 @@ def _write_jsonl(
     type=click.Path(path_type=Path),
     required=True,
 )
-def main(dataset_dir: Path, config_path: Path, output_dir: Path) -> None:
-    generate_subsets(dataset_dir, config_path, output_dir)
+@click.option("--verbose", is_flag=True)
+def main(
+    dataset_dir: Path,
+    config_path: Path,
+    output_dir: Path,
+    verbose: bool,
+) -> None:
+    generate_subsets(dataset_dir, config_path, output_dir, verbose)
 
 
 if __name__ == "__main__":
