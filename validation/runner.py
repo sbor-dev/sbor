@@ -58,18 +58,6 @@ def load_input_items(path: Path) -> list[JsonObject]:
     return sorted(items, key=lambda item: required_text(item, "key"))
 
 
-def item_limit(configuration: JsonObject) -> int | None:
-    value = configuration.get("item_limit")
-
-    if value is None:
-        return None
-
-    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
-        raise ValueError("item_limit must be a positive integer or null")
-
-    return value
-
-
 def item_timeout_seconds(configuration: JsonObject) -> int:
     value = configuration.get("item_timeout_seconds")
 
@@ -77,13 +65,6 @@ def item_timeout_seconds(configuration: JsonObject) -> int:
         raise ValueError("item_timeout_seconds must be a positive integer")
 
     return value
-
-
-def select_items(items: list[JsonObject], limit: int | None) -> list[JsonObject]:
-    if limit is None:
-        return items
-
-    return items[:limit]
 
 
 def load_labels(path: Path) -> dict[str, JsonObject]:
@@ -582,7 +563,6 @@ def main(
 ) -> None:
     configuration = load_yaml_mapping(validation_config)
     experiment_metadata = load_experiment_metadata(metadata)
-    limit = item_limit(configuration)
     timeout_seconds = item_timeout_seconds(configuration)
 
     if (llm_config is not None) == llm_config_stdin:
@@ -600,7 +580,7 @@ def main(
     validate_runtime_models(experiment_metadata, model)
     validate_dataset_version(experiment_metadata, dataset_dir / "metadata.json")
 
-    items = select_items(load_input_items(dataset_dir / "input.jsonl"), limit)
+    items = load_input_items(dataset_dir / "input.jsonl")
     labels = load_labels(labels_path)
     verbose = os.environ.get("SBOR_VALIDATION_VERBOSE") == "true"
     output_dir.mkdir(parents=True, exist_ok=True)
