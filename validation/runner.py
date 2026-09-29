@@ -25,7 +25,6 @@ from validation.reports import load_reports
 from validation.reviewer import (
     agent_user_ids,
     configure_pi,
-    load_llm_configuration,
     run_reviewer,
 )
 from validation.run_artifacts import (
@@ -36,6 +35,12 @@ from validation.run_artifacts import (
 )
 
 JUDGE_ATTEMPTS = 2
+RUNTIME_CONFIGURATION_FIELDS = {
+    "model": "MODEL",
+    "base_url": "BASE_URL",
+    "api": "API",
+    "token": "TOKEN",
+}
 
 
 def load_input_items(path: Path) -> list[JsonObject]:
@@ -76,6 +81,26 @@ def configuration_flag(configuration: JsonObject, field: str) -> bool:
     return value
 
 
+def load_runtime_configuration(
+    role: str,
+    environment: dict[str, str] | None = None,
+) -> JsonObject:
+    source = os.environ if environment is None else environment
+    prefix = f"SBOR_{role.upper()}_"
+    configuration: JsonObject = {}
+
+    for field, suffix in RUNTIME_CONFIGURATION_FIELDS.items():
+        variable = f"{prefix}{suffix}"
+        value = source.get(variable)
+
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"Missing environment variable {variable}")
+
+        configuration[field] = value
+
+    return configuration
+
+
 def load_labels(path: Path) -> dict[str, JsonObject]:
     labels: dict[str, JsonObject] = {}
 
@@ -99,7 +124,8 @@ def run_item(
     item: JsonObject,
     label: JsonObject | None,
     output_dir: Path,
-    model: str,
+    reviewer_model: str,
+    judge_model: str,
     verbose: bool,
     capture_reasoning: bool = False,
 ) -> JsonObject:
@@ -179,7 +205,7 @@ def run_item(
             run_reviewer(
                 prepared,
                 report_dir,
-                model,
+                reviewer_model,
                 title,
                 description,
                 verbose,
@@ -236,7 +262,7 @@ def run_item(
                     prepared,
                     report_dir / "report.json",
                     judgment_path,
-                    model,
+                    judge_model,
                     key,
                     label,
                     verbose,
@@ -332,7 +358,8 @@ def run_item_with_timeout(
     item: JsonObject,
     label: JsonObject | None,
     output_dir: Path,
-    model: str,
+    reviewer_model: str,
+    judge_model: str,
     verbose: bool,
     timeout_seconds: int,
     capture_reasoning: bool = False,
@@ -346,7 +373,8 @@ def run_item_with_timeout(
             item,
             label,
             output_dir,
-            model,
+            reviewer_model,
+            judge_model,
             verbose,
             capture_reasoning,
         ),
@@ -385,7 +413,8 @@ def _run_item_process(
     item: JsonObject,
     label: JsonObject | None,
     output_dir: Path,
-    model: str,
+    reviewer_model: str,
+    judge_model: str,
     verbose: bool,
     capture_reasoning: bool,
 ) -> None:
@@ -395,7 +424,8 @@ def _run_item_process(
             item,
             label,
             output_dir,
-            model,
+            reviewer_model,
+            judge_model,
             verbose,
             capture_reasoning,
         )
@@ -561,11 +591,6 @@ def _timestamp() -> str:
 @click.option("--code-revision", required=True)
 @click.option("--code-dirty", type=click.BOOL, required=True)
 @click.option(
-    "--llm-config",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
-@click.option("--llm-config-stdin", is_flag=True)
-@click.option(
     "--dataset-dir",
     type=click.Path(exists=True, file_okay=False, path_type=Path),
     required=True,
@@ -585,8 +610,6 @@ def main(
     metadata: Path,
     code_revision: str,
     code_dirty: bool,
-    llm_config: Path | None,
-    llm_config_stdin: bool,
     dataset_dir: Path,
     labels_path: Path,
     output_dir: Path,
@@ -597,19 +620,12 @@ def main(
     verbose = configuration_flag(configuration, "verbose")
     capture_reasoning = configuration_flag(configuration, "capture_reasoning")
 
-    if (llm_config is not None) == llm_config_stdin:
-        raise click.ClickException(
-            "Provide exactly one of --llm-config or --llm-config-stdin"
-        )
+    reviewer_configuration = load_runtime_configuration("reviewer")
+    judge_configuration = load_runtime_configuration("judge")
+    reviewer_model = configure_pi(reviewer_configuration)
+    judge_model = configure_judge_pi(judge_configuration)
 
-    llm_configuration = load_llm_configuration(llm_config, llm_config_stdin)
-    model = configure_pi(llm_configuration)
-    judge_model = configure_judge_pi(llm_configuration)
-
-    if judge_model != model:
-        raise click.ClickException("Reviewer and judge models do not match")
-
-    validate_runtime_models(experiment_metadata, model)
+    validate_runtime_models(experiment_metadata, reviewer_model, judge_model)
     validate_dataset_version(experiment_metadata, dataset_dir / "metadata.json")
 
     items = load_input_items(dataset_dir / "input.jsonl")
@@ -630,7 +646,8 @@ def main(
     if verbose:
         click.echo(
             f"Starting validation run {artifacts.run_id} with "
-            f"{len(items)} items using model {model}",
+            f"{len(items)} items using reviewer {reviewer_model} "
+            f"and judge {judge_model}",
             err=True,
         )
 
@@ -646,7 +663,8 @@ def main(
                     item,
                     labels.get(key),
                     artifacts.run_dir,
-                    model,
+                    reviewer_model,
+                    judge_model,
                     verbose,
                     timeout_seconds,
                     capture_reasoning,

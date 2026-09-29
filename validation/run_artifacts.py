@@ -108,17 +108,24 @@ def create_run_artifacts(
     return artifacts
 
 
-def validate_runtime_models(metadata: JsonObject, model: str) -> None:
+def validate_runtime_models(
+    metadata: JsonObject,
+    reviewer_model: str,
+    judge_model: str,
+) -> None:
     reviewer = required_mapping(metadata, "reviewer")
     judge = required_mapping(metadata, "judge")
 
-    for role, configuration in (("reviewer", reviewer), ("judge", judge)):
+    for role, configuration, runtime_model in (
+        ("reviewer", reviewer, reviewer_model),
+        ("judge", judge, judge_model),
+    ):
         declared_model = required_text(configuration, "model")
 
-        if declared_model != model:
+        if declared_model != runtime_model:
             raise ValueError(
                 f"Declared {role} model {declared_model!r} does not match "
-                f"runtime model {model!r}"
+                f"runtime model {runtime_model!r}"
             )
 
 

@@ -1,12 +1,24 @@
+import os
 import shutil
 import subprocess
-import sys
 import tempfile
+from collections.abc import Mapping
 from pathlib import Path
 
 import click
 
 from validation.run_artifacts import load_experiment_metadata
+
+RUNTIME_ENVIRONMENT_VARIABLES = (
+    "SBOR_REVIEWER_MODEL",
+    "SBOR_REVIEWER_BASE_URL",
+    "SBOR_REVIEWER_API",
+    "SBOR_REVIEWER_TOKEN",
+    "SBOR_JUDGE_MODEL",
+    "SBOR_JUDGE_BASE_URL",
+    "SBOR_JUDGE_API",
+    "SBOR_JUDGE_TOKEN",
+)
 
 
 def run_command(command: list[str], input_text: str | None = None) -> None:
@@ -29,13 +41,6 @@ def image_exists(image: str) -> bool:
     return result.returncode == 0
 
 
-def read_llm_config(path: Path | None) -> str:
-    if path is None:
-        return sys.stdin.read()
-
-    return path.read_text(encoding="utf-8")
-
-
 def docker_command(
     reviewer_input_dir: Path,
     judge_labels_dir: Path,
@@ -45,14 +50,19 @@ def docker_command(
     code_revision: str,
     code_dirty: bool,
     image: str,
+    environment: Mapping[str, str] | None = None,
 ) -> list[str]:
+    source = os.environ if environment is None else environment
     command = [
         "docker",
         "run",
         "--rm",
-        "--interactive",
         "--add-host=host.docker.internal:host-gateway",
     ]
+
+    for variable in RUNTIME_ENVIRONMENT_VARIABLES:
+        if variable in source:
+            command.extend(["--env", variable])
 
     command.extend(
         [
@@ -85,7 +95,6 @@ def docker_command(
             "/labels/labels.jsonl",
             "--output-dir",
             "/output",
-            "--llm-config-stdin",
         ]
     )
 
@@ -115,10 +124,6 @@ def docker_command(
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     required=True,
 )
-@click.option(
-    "--llm-config",
-    type=click.Path(exists=True, dir_okay=False, path_type=Path),
-)
 @click.option("--image", default="sbor", show_default=True)
 @click.option("--rebuild", is_flag=True)
 def main(
@@ -126,7 +131,6 @@ def main(
     output_dir: Path,
     validation_config: Path,
     metadata: Path,
-    llm_config: Path | None,
     image: str,
     rebuild: bool,
 ) -> None:
@@ -136,11 +140,7 @@ def main(
         run_command(["docker", "build", "--tag", image, "."])
 
     output_dir.mkdir(parents=True, exist_ok=True)
-    llm_config_text = read_llm_config(llm_config)
     code_revision, code_dirty = git_state(Path(__file__).resolve().parent.parent)
-
-    if not llm_config_text.strip():
-        raise click.ClickException("LLM configuration is empty")
 
     with (
         tempfile.TemporaryDirectory(
@@ -169,7 +169,7 @@ def main(
             code_dirty,
             image,
         )
-        run_command(command, llm_config_text)
+        run_command(command)
 
 
 def git_state(directory: Path) -> tuple[str, bool]:

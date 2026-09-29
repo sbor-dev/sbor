@@ -1,34 +1,14 @@
 import json
 import os
 import subprocess
-import sys
 from pathlib import Path
 
-import yaml
-
-from validation.common import JsonObject, load_yaml_mapping, required_text
+from validation.common import JsonObject, required_text
 from validation.downloader import PreparedReview
 from validation.pi_output import run_pi_with_reasoning_capture
 
 PROMPT_PATH = Path("/home/sbor/.pi/agent/validation_prompt.txt")
 AGENT_DIR = Path("/home/sbor/.pi/agent")
-
-
-def load_llm_configuration(path: Path | None, read_stdin: bool) -> JsonObject:
-    if read_stdin:
-        payload = yaml.safe_load(sys.stdin.read())
-    elif path is not None:
-        payload = load_yaml_mapping(path)
-    else:
-        raise ValueError("LLM configuration source is required")
-
-    if not isinstance(payload, dict):
-        raise ValueError("Expected LLM configuration mapping")
-
-    for field in ("model", "base_url", "api", "token"):
-        required_text(payload, field)
-
-    return payload
 
 
 def agent_user_ids() -> tuple[int, int]:

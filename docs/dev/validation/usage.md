@@ -34,19 +34,16 @@ Each generated subset is a standalone dataset directory containing a copy of `me
 
 ## Validation
 
-Run validation with Deepseek API
+The reviewer and judge runtime settings are read from exported environment variables. Check `.env.example`.
 
 ```bash
-{
-  printf '%s\n' 'model: deepseek-chat'
-  printf '%s\n' 'base_url: https://api.deepseek.com/v1'
-  printf '%s\n' 'api: openai-completions'
-  printf 'token: %s\n' "$DEEPSEEK_TOKEN"
-} | uv run --no-sync python -m validation.validate \
+uv run --no-sync python -m validation.validate \
   --dataset-dir sbor-dataset \
   --output-dir runs \
-  --metadata experiment.yaml
+  --metadata experiment.yaml \
+  --rebuild
 ```
 
-Validation progress and agent output are streamed when `verbose: true` is set
-in `config/validation.yaml`.
+`--rebuild` refreshes the Docker image after validation code changes. It can be omitted on later runs that use the same code revision.
+
+Validation progress and agent output are streamed when `verbose: true` is set in `config/validation.yaml`.
