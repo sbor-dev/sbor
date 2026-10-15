@@ -21,6 +21,7 @@ from validation.common import (
 from validation.downloader import prepare_review
 from validation.judge import configure_judge_pi, run_judge
 from validation.judgments import load_judgment
+from validation.metrics import write_metrics
 from validation.reports import load_reports
 from validation.reviewer import (
     agent_user_ids,
@@ -202,7 +203,7 @@ def run_item(
             if verbose:
                 click.echo(f"{key}: running reviewer", err=True)
 
-            run_reviewer(
+            reviewer_inference = run_reviewer(
                 prepared,
                 report_dir,
                 reviewer_model,
@@ -210,9 +211,7 @@ def run_item(
                 description,
                 verbose,
                 reasoning_path=(
-                    result_dir / "reviewer-reasoning.txt"
-                    if capture_reasoning
-                    else None
+                    result_dir / "reviewer-reasoning.txt" if capture_reasoning else None
                 ),
             )
             stages["reviewer"]["finished_at"] = _timestamp()
@@ -351,6 +350,10 @@ def run_item(
         raise
 
     _write_json(result_path, result)
+    result["_reviewer_inference"] = {
+        "output_tokens": reviewer_inference.output_tokens,
+        "duration_seconds": reviewer_inference.duration_seconds,
+    }
     return result
 
 
@@ -688,6 +691,7 @@ def main(
         failed = [result for result in results if result["status"] != "succeeded"]
         status = "failed" if failed else "completed"
     finally:
+        write_metrics(artifacts.run_dir, labels, results)
         artifacts.finish(status)
 
         if verbose:

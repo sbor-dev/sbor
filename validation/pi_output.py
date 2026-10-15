@@ -2,10 +2,19 @@ import json
 import subprocess
 import sys
 import tempfile
+import time
+from contextlib import nullcontext
+from dataclasses import dataclass
 from pathlib import Path
-from typing import TextIO
+from typing import TextIO, cast
 
 from validation.common import JsonObject
+
+
+@dataclass(frozen=True)
+class InferenceStats:
+    output_tokens: int
+    duration_seconds: float
 
 
 def run_pi_with_reasoning_capture(
@@ -14,13 +23,31 @@ def run_pi_with_reasoning_capture(
     reasoning_path: Path,
     verbose: bool,
     role: str,
-) -> None:
-    reasoning_path.parent.mkdir(parents=True, exist_ok=True)
+) -> InferenceStats:
+    return run_pi_json(command, cwd, verbose, role, reasoning_path)
+
+
+def run_pi_json(
+    command: list[str],
+    cwd: Path,
+    verbose: bool,
+    role: str,
+    reasoning_path: Path | None = None,
+) -> InferenceStats:
+    if reasoning_path is not None:
+        reasoning_path.parent.mkdir(parents=True, exist_ok=True)
+
+    reasoning_context = (
+        reasoning_path.open("a", encoding="utf-8")
+        if reasoning_path is not None
+        else nullcontext(None)
+    )
 
     with (
-        reasoning_path.open("a", encoding="utf-8") as reasoning_file,
+        reasoning_context as optional_reasoning_file,
         tempfile.TemporaryFile(mode="w+", encoding="utf-8") as stderr_file,
     ):
+        reasoning_file = cast(TextIO | None, optional_reasoning_file)
         process = subprocess.Popen(
             command,
             cwd=cwd,
@@ -32,6 +59,10 @@ def run_pi_with_reasoning_capture(
         text_was_streamed = False
         text_ends_with_newline = True
         thinking_block_started = False
+        response_started_at: float | None = None
+        response_output_tokens: int | None = None
+        output_tokens = 0
+        inference_seconds = 0.0
 
         try:
             if process.stdout is None:
@@ -48,15 +79,37 @@ def run_pi_with_reasoning_capture(
                 if not isinstance(event, dict):
                     continue
 
+                message = event.get("message")
+
+                if (
+                    event.get("type") == "message_start"
+                    and isinstance(message, dict)
+                    and message.get("role") == "assistant"
+                ):
+                    response_started_at = time.monotonic()
+                    response_output_tokens = None
+
                 update = _assistant_update(event)
 
                 if update is not None:
+                    if response_started_at is None:
+                        response_started_at = time.monotonic()
+
+                    usage_output = _usage_output_tokens(event.get("usage"))
+
+                    if usage_output is not None:
+                        response_output_tokens = usage_output
+
                     update_type = update.get("type")
                     delta = update.get("delta")
 
                     if update_type == "thinking_start":
                         thinking_block_started = False
-                    elif update_type == "thinking_delta" and isinstance(delta, str):
+                    elif (
+                        reasoning_file is not None
+                        and update_type == "thinking_delta"
+                        and isinstance(delta, str)
+                    ):
                         if not thinking_block_started:
                             _start_reasoning_block(reasoning_file)
                             thinking_block_started = True
@@ -74,6 +127,25 @@ def run_pi_with_reasoning_capture(
                         sys.stdout.flush()
                         text_was_streamed = True
                         text_ends_with_newline = delta.endswith("\n")
+
+                if (
+                    event.get("type") == "message_end"
+                    and isinstance(message, dict)
+                    and message.get("role") == "assistant"
+                ):
+                    final_output = _usage_output_tokens(message.get("usage"))
+
+                    if final_output is not None:
+                        response_output_tokens = final_output
+
+                    if response_started_at is not None:
+                        inference_seconds += time.monotonic() - response_started_at
+
+                    if response_output_tokens is not None:
+                        output_tokens += response_output_tokens
+
+                    response_started_at = None
+                    response_output_tokens = None
 
                 error_message = _assistant_error(event)
 
@@ -103,6 +175,8 @@ def run_pi_with_reasoning_capture(
     if assistant_error is not None:
         raise RuntimeError(f"{role} failed: {assistant_error}")
 
+    return InferenceStats(output_tokens, inference_seconds)
+
 
 def _assistant_update(event: JsonObject) -> JsonObject | None:
     if event.get("type") != "message_update":
@@ -130,6 +204,18 @@ def _assistant_error(event: JsonObject) -> str | None:
     detail = message.get("errorMessage")
 
     return detail if isinstance(detail, str) and detail else str(stop_reason)
+
+
+def _usage_output_tokens(value: object) -> int | None:
+    if not isinstance(value, dict):
+        return None
+
+    output = value.get("output")
+
+    if isinstance(output, int) and not isinstance(output, bool) and output >= 0:
+        return output
+
+    return None
 
 
 def _start_reasoning_block(handle: TextIO) -> None:

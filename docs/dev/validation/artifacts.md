@@ -144,7 +144,11 @@ judge:
 }
 ```
 
-`avg_tokens_per_second` applies only to the reviewer
+Timing distributions include succeeded items only. Empty distributions use
+`null` for every statistic. `avg_tokens_per_second` applies only to the reviewer
+and is calculated as total output tokens divided by total model-response time;
+tool execution time is excluded. It is `null` when the provider does not expose
+token usage.
 
 ## Dataset build report
 

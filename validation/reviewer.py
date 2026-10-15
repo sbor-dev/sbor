@@ -5,7 +5,7 @@ from pathlib import Path
 
 from validation.common import JsonObject, required_text
 from validation.downloader import PreparedReview
-from validation.pi_output import run_pi_with_reasoning_capture
+from validation.pi_output import InferenceStats, run_pi_json
 
 PROMPT_PATH = Path("/home/sbor/.pi/agent/validation_prompt.txt")
 AGENT_DIR = Path("/home/sbor/.pi/agent")
@@ -66,9 +66,8 @@ def render_prompt(
 def reviewer_command(
     model: str,
     prompt: str,
-    capture_reasoning: bool = False,
 ) -> list[str]:
-    command = [
+    return [
         "runuser",
         "-u",
         "sbor",
@@ -80,13 +79,10 @@ def reviewer_command(
         "validation",
         "--model",
         model,
+        "--mode",
+        "json",
+        prompt,
     ]
-
-    if capture_reasoning:
-        command.extend(["--mode", "json"])
-
-    command.append(prompt)
-    return command
 
 
 def run_reviewer(
@@ -98,7 +94,7 @@ def run_reviewer(
     verbose: bool,
     prompt_path: Path = PROMPT_PATH,
     reasoning_path: Path | None = None,
-) -> None:
+) -> InferenceStats:
     report_dir.mkdir()
     subprocess.run(
         [
@@ -112,39 +108,11 @@ def run_reviewer(
         check=True,
     )
     prompt = render_prompt(prompt_path, title, description, report_dir)
-    command = reviewer_command(model, prompt, reasoning_path is not None)
-
-    if reasoning_path is not None:
-        run_pi_with_reasoning_capture(
-            command,
-            prepared.repository_dir,
-            reasoning_path,
-            verbose,
-            "Reviewer",
-        )
-        return
-
-    if verbose:
-        result = subprocess.run(
-            command,
-            cwd=prepared.repository_dir,
-            check=False,
-        )
-    else:
-        result = subprocess.run(
-            command,
-            cwd=prepared.repository_dir,
-            stderr=subprocess.PIPE,
-            stdout=subprocess.DEVNULL,
-            text=True,
-            check=False,
-        )
-
-    if result.returncode:
-        detail = result.stderr.strip() if result.stderr else ""
-        message = f"Reviewer exited with code {result.returncode}"
-
-        if detail:
-            message = f"{message}: {detail}"
-
-        raise RuntimeError(message)
+    command = reviewer_command(model, prompt)
+    return run_pi_json(
+        command,
+        prepared.repository_dir,
+        verbose,
+        "Reviewer",
+        reasoning_path,
+    )
