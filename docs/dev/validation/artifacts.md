@@ -47,7 +47,7 @@ reviewer:
   inference_command: null
 judge:
   provider: openai-compatible
-  model: fixed-judge-model
+  model: deepseek-ai/DeepSeek-V4-Flash
   revision: null
   weight_quantization: null
   kv_cache_quantization: null
@@ -114,6 +114,7 @@ judge:
 }
 ```
 
+
 ## `metrics.json`
 
 ```json
@@ -163,15 +164,15 @@ The builder creates `build-report.json` next to the dataset:
   "items_written": 214,
   "items_skipped": 7,
   "sources": {
-    "c_cpp": {"written": 120, "skipped": 2},
+    "c_cpp_benchmark": {"written": 120, "skipped": 2},
     "swrbench": {"written": 94, "skipped": 5}
   },
   "skipped": [
     {
-      "source": "c_cpp",
+      "source": "c_cpp_benchmark",
       "source_id": "example-42",
-      "reason": "branch_unavailable",
-      "detail": "origin/review-branch was not found"
+      "reason": "head_revision_unavailable",
+      "detail": "The head revision could not be fetched"
     }
   ]
 }

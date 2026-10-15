@@ -8,7 +8,7 @@ experiment:
 dataset:
   repository: local/sbor-validation
   revision: local
-  version: "0.1.0"
+  version: "0.2.0"
   sha256: null
 reviewer:
   provider: deepseek-api
