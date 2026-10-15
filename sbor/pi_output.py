@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
@@ -33,6 +34,7 @@ def run_pi_json(
     verbose: bool,
     role: str,
     reasoning_path: Path | None = None,
+    environment: Mapping[str, str] | None = None,
 ) -> InferenceStats:
     if reasoning_path is not None:
         reasoning_path.parent.mkdir(parents=True, exist_ok=True)
@@ -51,6 +53,7 @@ def run_pi_json(
         process = subprocess.Popen(
             command,
             cwd=cwd,
+            env=environment,
             stdout=subprocess.PIPE,
             stderr=None if verbose else stderr_file,
             text=True,
