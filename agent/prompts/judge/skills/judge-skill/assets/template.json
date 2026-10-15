@@ -1,0 +1,20 @@
+{
+  "key": "str: validation item key",
+  "summary": "str: concise evidence-backed overall judgment",
+  "label_assessments": [
+    {
+      "label_index": "int: zero-based hidden label index",
+      "verdict": "str: matched or missed",
+      "reviewer_finding_ids": ["str: reviewer finding id"],
+      "reason": "str: evidence-backed explanation"
+    }
+  ],
+  "reviewer_assessments": [
+    {
+      "id": "str: reviewer finding id",
+      "verdict": "str: supported or unsupported",
+      "label_indexes": ["int: zero-based hidden label index"],
+      "reason": "str: evidence-backed explanation"
+    }
+  ]
+}

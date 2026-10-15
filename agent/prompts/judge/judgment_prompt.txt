@@ -1,0 +1,16 @@
+Judge the reviewer report against the hidden reference label for one validation item.
+Read and apply judge-skill before writing the result. Inspect the diff and repository only when needed to resolve a disagreement.
+Validation item key: {key}
+Reviewer report path: {report_path}
+Canonical diff path: {diff_path}
+Use only the canonical diff as the change scope. Do not use `git diff HEAD~1`,
+recent commits, or any other inferred commit range as a substitute.
+Hidden reference label:
+{label}
+Required judgment.json shape:
+{judgment_schema}
+Every object must contain every field shown in this shape. Use `verdict`, not
+`status`, in assessments. Include an evidence-backed `reason` in every
+assessment and a non-empty top-level `summary`.
+{repair_instruction}
+Write judgment.json to {judgment_path} and verify it exists before finishing.

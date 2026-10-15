@@ -1,0 +1,10 @@
+.git
+.pytest_cache
+.ruff_cache
+.venv
+__pycache__
+*.pyc
+.tmp-dataset-build
+validation/dataset/sources
+output
+runs

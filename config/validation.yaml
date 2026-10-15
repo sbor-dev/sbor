@@ -1,0 +1,3 @@
+item_timeout_seconds: 900
+verbose: true
+capture_reasoning: true
