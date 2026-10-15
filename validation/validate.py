@@ -137,7 +137,9 @@ def main(
     load_experiment_metadata(metadata)
 
     if rebuild or not image_exists(image):
-        run_command(["docker", "build", "--tag", image, "."])
+        run_command(
+            ["docker", "build", "--target", "validation", "--tag", image, "."]
+        )
 
     output_dir.mkdir(parents=True, exist_ok=True)
     code_revision, code_dirty = git_state(Path(__file__).resolve().parent.parent)

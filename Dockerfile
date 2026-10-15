@@ -1,4 +1,4 @@
-FROM nestybox/ubuntu-noble-docker:latest
+FROM nestybox/ubuntu-noble-docker:latest AS runtime
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -39,13 +39,22 @@ COPY ./pyproject.toml ./uv.lock ./
 
 RUN uv sync --frozen --no-install-project
 
-COPY ./validation ./validation
-
 COPY ./sbor ./sbor
 
-COPY ./scripts /scripts
+RUN uv sync --frozen
 
-RUN chmod +x /scripts/*
+COPY ./agent/prompts/reviewer /opt/sbor/reviewer
+
+ENV PATH="/app/.venv/bin:$PATH" \
+    SBOR_REVIEWER_ASSETS_DIR=/opt/sbor/reviewer
+
+# love government <3
+RUN git config --system http.version HTTP/1.1
+
+
+FROM runtime AS validation
+
+COPY ./validation ./validation
 
 COPY ./agent /root/.pi/agent
 
@@ -57,7 +66,5 @@ COPY --chown=sbor:sbor ./agent/prompts/judge /home/sbor/.pi/judge
 
 RUN chmod -R go-rwx /home/sbor/.pi
 
-# love government <3
-RUN git config --system http.version HTTP/1.1
 
-CMD ["/scripts/start.sh"]
+FROM runtime AS reviewer
