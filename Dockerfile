@@ -41,6 +41,8 @@ RUN uv sync --frozen --no-install-project
 
 COPY ./validation ./validation
 
+COPY ./sbor ./sbor
+
 COPY ./scripts /scripts
 
 RUN chmod +x /scripts/*
