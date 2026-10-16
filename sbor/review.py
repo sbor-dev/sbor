@@ -61,6 +61,7 @@ def run_review(
             report_dir = runtime_dir / "report"
             report_dir.mkdir()
             agent_dir = runtime_dir / "agent"
+            shutil.copytree(assets["system"].parent, agent_dir)
             model = configure_pi(
                 llm_configuration,
                 agent_dir,
@@ -76,7 +77,7 @@ def run_review(
                 }
             )
             prompt = render_prompt(
-                assets["prompt"],
+                agent_dir / "validation_prompt.txt",
                 request.title,
                 request.description,
                 report_dir,
@@ -86,8 +87,6 @@ def run_review(
                 model,
                 prompt,
                 PROVIDER_NAME,
-                system_prompt=assets["system"].read_text(encoding="utf-8"),
-                skill_paths=(assets["audit_skill"], assets["report_skill"]),
                 isolated=True,
             )
             pi_environment = dict(source_environment)
@@ -192,7 +191,7 @@ def _validate_checkout(workspace: Path, head_sha: str) -> None:
         )
 
     status = subprocess.run(
-        ["git", "diff", "--quiet", "HEAD", "--"],
+        _git_command(workspace, "diff", "--quiet", "HEAD", "--"),
         cwd=workspace,
         check=False,
     )
@@ -208,13 +207,13 @@ def _validate_checkout(workspace: Path, head_sha: str) -> None:
 
 def _create_diff(workspace: Path, base_sha: str, head_sha: str) -> bytes:
     result = subprocess.run(
-        [
-            "git",
+        _git_command(
+            workspace,
             "diff",
             "--binary",
             "--no-ext-diff",
             f"{base_sha}..{head_sha}",
-        ],
+        ),
         cwd=workspace,
         capture_output=True,
         check=False,
@@ -253,7 +252,7 @@ def _reviewer_assets(directory: Path) -> dict[str, Path]:
 
 def _run_git(workspace: Path, *arguments: str) -> str:
     result = subprocess.run(
-        ["git", *arguments],
+        _git_command(workspace, *arguments),
         cwd=workspace,
         capture_output=True,
         text=True,
@@ -270,6 +269,15 @@ def _run_git(workspace: Path, *arguments: str) -> str:
         raise RuntimeError(message)
 
     return result.stdout
+
+
+def _git_command(workspace: Path, *arguments: str) -> list[str]:
+    return [
+        "git",
+        "-c",
+        f"safe.directory={workspace.resolve()}",
+        *arguments,
+    ]
 
 
 def _clear_managed_outputs(output_dir: Path) -> None:

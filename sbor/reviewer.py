@@ -24,20 +24,12 @@ def reviewer_command(
     prompt: str,
     provider: str,
     *,
-    system_prompt: str | None = None,
-    skill_paths: tuple[Path, ...] = (),
     isolated: bool = False,
 ) -> list[str]:
     command = ["pi"]
 
     if isolated:
         command.extend(["--no-session", "--no-context-files"])
-
-    if system_prompt is not None:
-        command.extend(["--system-prompt", system_prompt])
-
-    for skill_path in skill_paths:
-        command.extend(["--skill", str(skill_path)])
 
     command.extend(
         [
