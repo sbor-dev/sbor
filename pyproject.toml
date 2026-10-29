@@ -4,6 +4,18 @@ version = "0.1.0"
 requires-python = ">=3.11"
 dependencies = ["click", "PyYAML", "pytest", "ruff"]
 
+[project.scripts]
+sbor-review = "sbor.cli:main"
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["sbor*", "validation*"]
+exclude = ["validation.dataset.sources*"]
+namespaces = false
+
 [tool.ruff]
 target-version = "py311"
 line-length = 88

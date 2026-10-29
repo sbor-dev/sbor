@@ -1,4 +1,4 @@
-Review the current repository state against the Git diff in ../diff.patch.
+Review the current repository state against the Git diff in {diff_path}.
 Read and apply audit-skill before the review, then read and apply report-skill.
 Inspect the diff and relevant source files. Report only evidence-backed defects.
 Keep history inspection bounded to relevant commits. Do not exhaustively traverse repository history.

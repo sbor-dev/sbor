@@ -12,6 +12,12 @@ from pathlib import Path
 
 import click
 
+from sbor.pi import (
+    RUNTIME_CONFIGURATION_FIELDS as PI_RUNTIME_CONFIGURATION_FIELDS,
+)
+from sbor.pi import (
+    load_runtime_configuration as load_pi_runtime_configuration,
+)
 from validation.common import (
     JsonObject,
     load_yaml_mapping,
@@ -36,12 +42,7 @@ from validation.run_artifacts import (
 )
 
 JUDGE_ATTEMPTS = 2
-RUNTIME_CONFIGURATION_FIELDS = {
-    "model": "MODEL",
-    "base_url": "BASE_URL",
-    "api": "API",
-    "token": "TOKEN",
-}
+RUNTIME_CONFIGURATION_FIELDS = PI_RUNTIME_CONFIGURATION_FIELDS
 
 
 def load_input_items(path: Path) -> list[JsonObject]:
@@ -86,20 +87,7 @@ def load_runtime_configuration(
     role: str,
     environment: dict[str, str] | None = None,
 ) -> JsonObject:
-    source = os.environ if environment is None else environment
-    prefix = f"SBOR_{role.upper()}_"
-    configuration: JsonObject = {}
-
-    for field, suffix in RUNTIME_CONFIGURATION_FIELDS.items():
-        variable = f"{prefix}{suffix}"
-        value = source.get(variable)
-
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"Missing environment variable {variable}")
-
-        configuration[field] = value
-
-    return configuration
+    return load_pi_runtime_configuration(role, environment)
 
 
 def load_labels(path: Path) -> dict[str, JsonObject]:
